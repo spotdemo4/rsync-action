@@ -19,8 +19,6 @@ export interface ActionInputs {
   secret: string;
   tls: boolean;
   rsyncArgs: string[];
-  toolVersion: string;
-  downloadUrls: Record<string, string>;
 }
 
 interface Auth {
@@ -29,6 +27,31 @@ interface Auth {
 }
 
 type ToolPaths = Record<string, string>;
+
+interface AlpinePackage {
+  cacheName: string;
+  version: string;
+  url: string;
+}
+
+export const ALPINE_PACKAGES = {
+  openssl: {
+    cacheName: "alpine-openssl",
+    version: "3.5.7",
+    url: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
+  },
+  rsync: {
+    cacheName: "alpine-rsync",
+    version: "3.4.4",
+    url: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
+  },
+} satisfies Record<string, AlpinePackage>;
+
+const TOOL_PACKAGES: Record<string, keyof typeof ALPINE_PACKAGES> = {
+  openssl: "openssl",
+  rsync: "rsync",
+  "rsync-ssl": "rsync",
+};
 
 export function parseSecret(secret: string): Auth {
   const separator = secret.indexOf(":");
@@ -82,12 +105,6 @@ export function requiredTools(tls: boolean): string[] {
 }
 
 function getInputs(): ActionInputs {
-  const downloadUrls: Record<string, string> = {};
-
-  for (const tool of ["rsync", "rsync-ssl", "openssl"]) {
-    downloadUrls[tool] = core.getInput(`${tool}-download-url`);
-  }
-
   return {
     server: core.getInput("server", { required: true }),
     module: core.getInput("module", { required: true }),
@@ -96,16 +113,10 @@ function getInputs(): ActionInputs {
     secret: core.getInput("secret", { required: true }),
     tls: core.getBooleanInput("tls"),
     rsyncArgs: core.getMultilineInput("rsync-args"),
-    toolVersion: core.getInput("tool-version") || "1.0.0",
-    downloadUrls,
   };
 }
 
-function executableName(tool: string): string {
-  return process.platform === "win32" ? `${tool}.exe` : tool;
-}
-
-async function ensureTool(tool: string, version: string, downloadUrl: string): Promise<string> {
+async function ensureTool(tool: string): Promise<string> {
   const fromPath = await io.which(tool, false);
 
   if (fromPath) {
@@ -113,10 +124,11 @@ async function ensureTool(tool: string, version: string, downloadUrl: string): P
     return fromPath;
   }
 
-  const cachedDir = tc.find(tool, version);
+  const alpinePackage = ALPINE_PACKAGES[TOOL_PACKAGES[tool]];
+  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.version);
 
   if (cachedDir) {
-    core.addPath(cachedDir);
+    core.addPath(path.join(cachedDir, "usr/bin"));
 
     const fromCache = await io.which(tool, false);
     if (fromCache) {
@@ -125,20 +137,27 @@ async function ensureTool(tool: string, version: string, downloadUrl: string): P
     }
   }
 
-  if (!downloadUrl) {
+  if (process.platform !== "linux" || process.arch !== "x64") {
     throw new Error(
-      `Could not find ${tool} in PATH or the Actions tool cache. Set '${tool}-download-url' to a directly downloadable executable.`,
+      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Alpine downloads support Linux x64 runners only.`,
     );
   }
 
-  core.info(`Downloading ${tool}`);
-  const downloaded = await tc.downloadTool(downloadUrl);
-  await chmod(downloaded, 0o755);
+  core.info(`Downloading ${tool} from ${alpinePackage.url}`);
+  const downloaded = await tc.downloadTool(alpinePackage.url);
+  const extracted = await tc.extractTar(downloaded);
+  const binDir = path.join(extracted, "usr/bin");
 
-  const cacheDir = await tc.cacheFile(downloaded, executableName(tool), tool, version);
-  const cachedTool = path.join(cacheDir, executableName(tool));
+  for (const executable of ["rsync", "rsync-ssl", "openssl"]) {
+    if (TOOL_PACKAGES[executable] === TOOL_PACKAGES[tool]) {
+      await chmod(path.join(binDir, executable), 0o755);
+    }
+  }
+
+  const cacheDir = await tc.cacheDir(extracted, alpinePackage.cacheName, alpinePackage.version);
+  const cachedTool = path.join(cacheDir, "usr/bin", tool);
   await chmod(cachedTool, 0o755);
-  core.addPath(cacheDir);
+  core.addPath(path.join(cacheDir, "usr/bin"));
 
   return cachedTool;
 }
@@ -147,7 +166,7 @@ async function ensureTools(inputs: ActionInputs): Promise<ToolPaths> {
   const tools: ToolPaths = {};
 
   for (const tool of requiredTools(inputs.tls)) {
-    tools[tool] = await ensureTool(tool, inputs.toolVersion, inputs.downloadUrls[tool] ?? "");
+    tools[tool] = await ensureTool(tool);
   }
 
   return tools;

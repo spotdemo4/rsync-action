@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  ALPINE_PACKAGES,
   buildRemoteSpec,
   buildRsyncArgs,
   parseSecret,
@@ -18,8 +19,6 @@ function inputs(overrides: Partial<ActionInputs> = {}): ActionInputs {
     secret: "alice:correct-horse:battery-staple",
     tls: false,
     rsyncArgs: ["--archive", "--delete"],
-    toolVersion: "1.0.0",
-    downloadUrls: {},
     ...overrides,
   };
 }
@@ -82,4 +81,15 @@ await test("forces openssl as the first TLS argument", () => {
 await test("requires TLS helpers only when TLS is enabled", () => {
   assert.deepEqual(requiredTools(false), ["rsync"]);
   assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl"]);
+});
+
+await test("uses hardcoded Alpine package URLs for missing tools", () => {
+  assert.equal(
+    ALPINE_PACKAGES.rsync.url,
+    "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
+  );
+  assert.equal(
+    ALPINE_PACKAGES.openssl.url,
+    "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
+  );
 });

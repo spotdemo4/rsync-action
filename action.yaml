@@ -27,19 +27,6 @@ inputs:
     description: Newline-separated rsync arguments used for both pull and push
     required: false
     default: --archive
-  tool-version:
-    description: Semver version key to use when caching downloaded tools
-    required: false
-    default: 1.0.0
-  rsync-download-url:
-    description: Direct executable download URL used if rsync is missing from PATH and the tool cache
-    required: false
-  rsync-ssl-download-url:
-    description: Direct executable download URL used if rsync-ssl is missing from PATH and the tool cache
-    required: false
-  openssl-download-url:
-    description: Direct executable download URL used if openssl is missing from PATH and the tool cache
-    required: false
 
 runs:
   using: node24
