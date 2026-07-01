@@ -1,7 +1,55 @@
-name: node template
-description: a template for node projects
+name: rsync action
+description: Pull from an rsync daemon before a step and push changes back afterward
 author: trev
+
+inputs:
+  server:
+    description: rsync daemon host, optionally including a port as host:port
+    required: true
+  module:
+    description: rsync daemon module name
+    required: true
+  remote-path:
+    description: Path inside the rsync daemon module. Rsync trailing slash semantics are preserved.
+    required: false
+    default: ""
+  local-path:
+    description: Local file or directory path to sync. Rsync trailing slash semantics are preserved.
+    required: true
+  secret:
+    description: rsync daemon credentials in username:password format
+    required: true
+  tls:
+    description: Use rsync-ssl for a TLS-protected rsync daemon
+    required: false
+    default: "false"
+  tls-type:
+    description: TLS helper type for rsync-ssl, either openssl or stunnel
+    required: false
+    default: openssl
+  rsync-args:
+    description: Newline-separated rsync arguments used for both pull and push
+    required: false
+    default: --archive
+  tool-version:
+    description: Semver version key to use when caching downloaded tools
+    required: false
+    default: 1.0.0
+  rsync-download-url:
+    description: Direct executable download URL used if rsync is missing from PATH and the tool cache
+    required: false
+  rsync-ssl-download-url:
+    description: Direct executable download URL used if rsync-ssl is missing from PATH and the tool cache
+    required: false
+  openssl-download-url:
+    description: Direct executable download URL used if openssl is missing from PATH and the tool cache
+    required: false
+  stunnel-download-url:
+    description: Direct executable download URL used if stunnel is missing from PATH and the tool cache
+    required: false
 
 runs:
   using: node24
   main: build/index.js
+  post: build/index.js
+  post-if: always()

@@ -7,13 +7,19 @@
     "url": "https://trev.zip/llc/rsync-action"
   },
   "bin": {
-    "node-template": "build/index.js"
+    "rsync-action": "build/index.js"
   },
   "type": "module",
   "scripts": {
     "build": "rolldown -c && chmod +x build/index.js",
     "dev": "rolldown -c && node build/index.js",
     "test": "node --test"
+  },
+  "dependencies": {
+    "@actions/core": "^3.0.1",
+    "@actions/exec": "^3.0.0",
+    "@actions/io": "^3.0.2",
+    "@actions/tool-cache": "^4.0.0"
   },
   "devDependencies": {
     "@tsconfig/node-ts": "^23.6.4",
