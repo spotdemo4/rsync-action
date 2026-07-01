@@ -10,7 +10,3 @@
 # nix
 /result*
 /.direnv/
-
-# node
-/node_modules/
-/build/

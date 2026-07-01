@@ -4,5 +4,4 @@ author: trev
 
 runs:
   using: node24
-  pre: pre.ts
   main: build/index.js

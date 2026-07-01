@@ -25,13 +25,7 @@ jobs:
       - name: Release to Forgejo
         run: flake-release
         env:
-          REGISTRY: trev.zip
           GITHUB_TOKEN: ${{ secrets.DOCTOR_TOKEN }}
-          REGISTRY_PASSWORD: ${{ secrets.PACKAGE_TOKEN }}
-          DELETE_OLD_RELEASE_ARTIFACTS: true
-          PACKAGES: |
-            appimages.x86_64-linux.default.x86_64-unknown-linux-gnu
-            images.x86_64-linux.default.x86_64-unknown-linux-gnu
 
       - name: Release to NPM
         env:
