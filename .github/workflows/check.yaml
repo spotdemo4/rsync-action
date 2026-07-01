@@ -37,3 +37,9 @@ jobs:
 
       - name: Run action
         uses: ./. # zizmor: ignore[unpinned-uses]
+        with:
+          server: trev.zip
+          module: codex
+          remote-path: auth.json
+          local-path: ~/.codex/auth.json
+          secret: ${{ secrets.RSYNC_SECRET }}
