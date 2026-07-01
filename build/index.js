@@ -13,9 +13,9 @@ import { ok } from "assert";
 import * as util from "util";
 import * as child from "child_process";
 import { setTimeout as setTimeout$1 } from "timers";
-import * as stream from "stream";
 import { chmod } from "node:fs/promises";
 import path from "node:path";
+import * as stream from "stream";
 //#region \0rolldown/runtime.js
 var __create = Object.create;
 var __defProp = Object.defineProperty;
