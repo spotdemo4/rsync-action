@@ -1,6 +1,9 @@
 name: rsync action
 description: Pull from an rsync daemon before a step and push changes back afterward
 author: trev
+branding:
+  icon: aperture
+  color: yellow
 
 inputs:
   server:
