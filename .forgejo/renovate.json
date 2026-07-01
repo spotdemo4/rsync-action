@@ -12,6 +12,23 @@
   // repository
   "extends": ["config:recommended"],
   "addLabels": ["dep"],
+  "customDatasources": {
+    "alpine-edge-main": {
+      "defaultRegistryUrlTemplate": "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/",
+      "format": "html"
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Alpine edge APK package versions",
+      "managerFilePatterns": ["/^src/action\\.ts$/"],
+      "matchStrings": [
+        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+apkVersion: \"(?<currentValue>[^\"]+)\""
+      ],
+      "versioningTemplate": "loose"
+    }
+  ],
   "nix": {
     "enabled": true
   },
@@ -36,6 +53,20 @@
     {
       "matchManagers": ["github-actions"],
       "addLabels": ["actions"]
+    },
+    {
+      "matchDatasources": ["custom.alpine-edge-main"],
+      "matchPackageNames": ["openssl"],
+      "extractVersion": "^openssl-(?<version>[0-9][^/]*-r\\d+)\\.apk$",
+      "versioning": "loose",
+      "addLabels": ["alpine"]
+    },
+    {
+      "matchDatasources": ["custom.alpine-edge-main"],
+      "matchPackageNames": ["rsync"],
+      "extractVersion": "^rsync-(?<version>[0-9][^/]*-r\\d+)\\.apk$",
+      "versioning": "loose",
+      "addLabels": ["alpine"]
     },
     {
       "matchManagers": ["npm"],

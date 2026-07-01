@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   ALPINE_PACKAGES,
   alpineArchForNodeArch,
+  alpinePackageUrl,
   buildRemoteSpec,
   buildRsyncArgs,
   parseSecret,
@@ -84,21 +85,26 @@ await test("requires TLS helpers only when TLS is enabled", () => {
   assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl"]);
 });
 
-await test("uses hardcoded Alpine package URLs for missing tools", () => {
+await test("uses hardcoded Alpine package versions for missing tools", () => {
+  assert.equal(ALPINE_PACKAGES.rsync.apkVersion, "3.4.4-r0");
+  assert.equal(ALPINE_PACKAGES.openssl.apkVersion, "3.5.7-r0");
+});
+
+await test("builds Alpine package URLs for supported architectures", () => {
   assert.equal(
-    ALPINE_PACKAGES.rsync.urls.x86_64,
+    alpinePackageUrl("rsync", "x86_64"),
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
   );
   assert.equal(
-    ALPINE_PACKAGES.openssl.urls.x86_64,
+    alpinePackageUrl("openssl", "x86_64"),
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
   );
   assert.equal(
-    ALPINE_PACKAGES.rsync.urls.aarch64,
+    alpinePackageUrl("rsync", "aarch64"),
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/rsync-3.4.4-r0.apk",
   );
   assert.equal(
-    ALPINE_PACKAGES.openssl.urls.aarch64,
+    alpinePackageUrl("openssl", "aarch64"),
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/openssl-3.5.7-r0.apk",
   );
 });

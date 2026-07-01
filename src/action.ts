@@ -31,28 +31,30 @@ type AlpineArch = "aarch64" | "x86_64";
 
 interface AlpinePackage {
   cacheName: string;
-  version: string;
-  urls: Record<AlpineArch, string>;
+  apkVersion: string;
 }
+
+const ALPINE_REPOSITORY_URL = "https://dl-cdn.alpinelinux.org/alpine/edge/main";
 
 export const ALPINE_PACKAGES = {
   openssl: {
     cacheName: "alpine-openssl",
-    version: "3.5.7",
-    urls: {
-      aarch64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/openssl-3.5.7-r0.apk",
-      x86_64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
-    },
+    // renovate: datasource=custom.alpine-edge-main depName=openssl packageName=openssl
+    apkVersion: "3.5.7-r0",
   },
   rsync: {
     cacheName: "alpine-rsync",
-    version: "3.4.4",
-    urls: {
-      aarch64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/rsync-3.4.4-r0.apk",
-      x86_64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
-    },
+    // renovate: datasource=custom.alpine-edge-main depName=rsync packageName=rsync
+    apkVersion: "3.4.4-r0",
   },
 } satisfies Record<string, AlpinePackage>;
+
+export function alpinePackageUrl(
+  packageName: keyof typeof ALPINE_PACKAGES,
+  alpineArch: AlpineArch,
+): string {
+  return `${ALPINE_REPOSITORY_URL}/${alpineArch}/${packageName}-${ALPINE_PACKAGES[packageName].apkVersion}.apk`;
+}
 
 export function alpineArchForNodeArch(nodeArch: NodeJS.Architecture): AlpineArch | undefined {
   if (nodeArch === "arm64") {
@@ -142,7 +144,7 @@ async function ensureTool(tool: string): Promise<string> {
   }
 
   const alpinePackage = ALPINE_PACKAGES[TOOL_PACKAGES[tool]];
-  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.version, process.arch);
+  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.apkVersion, process.arch);
 
   if (cachedDir) {
     core.addPath(path.join(cachedDir, "usr/bin"));
@@ -162,7 +164,8 @@ async function ensureTool(tool: string): Promise<string> {
     );
   }
 
-  const packageUrl = alpinePackage.urls[alpineArch];
+  const packageName = TOOL_PACKAGES[tool];
+  const packageUrl = alpinePackageUrl(packageName, alpineArch);
   core.info(`Downloading ${tool} from ${packageUrl}`);
   const downloaded = await tc.downloadTool(packageUrl);
   const extracted = await tc.extractTar(downloaded);
@@ -177,7 +180,7 @@ async function ensureTool(tool: string): Promise<string> {
   const cacheDir = await tc.cacheDir(
     extracted,
     alpinePackage.cacheName,
-    alpinePackage.version,
+    alpinePackage.apkVersion,
     process.arch,
   );
   const cachedTool = path.join(cacheDir, "usr/bin", tool);
