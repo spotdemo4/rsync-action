@@ -22,13 +22,13 @@ jobs:
       - name: Initialize
         uses: spotdemo4/nix-init@1ddbb72a8ae759aa958222420b71c6a4c2e3412f # v1.54.1
         with:
-          fetch_depth: 0
           shell: release
 
       - name: Release to GitHub
-        run: flake-release
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" --repo "${REPOSITORY}" --title "${TAG}" --verify-tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Release to npm
-        run: npm publish --access public
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}

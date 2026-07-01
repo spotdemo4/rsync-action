@@ -33,7 +33,7 @@ jobs:
 
           chmod +x aarch64-unknown-linux-musl x86_64-linux-unknown-linux-musl
 
-      - name: Release rsync
+      - name: Release to Forgejo
         run: |
           set -euo pipefail
 

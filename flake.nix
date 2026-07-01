@@ -60,9 +60,8 @@
 
           release = pkgs.mkShell {
             packages = with pkgs; [
-              flake-release # github
+              gh # github
               forgejo-cli # forgejo
-              nodejs_24 # npm publish
             ];
           };
 
