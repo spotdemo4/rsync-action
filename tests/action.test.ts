@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   ALPINE_PACKAGES,
+  alpineArchForNodeArch,
   buildRemoteSpec,
   buildRsyncArgs,
   parseSecret,
@@ -85,11 +86,25 @@ await test("requires TLS helpers only when TLS is enabled", () => {
 
 await test("uses hardcoded Alpine package URLs for missing tools", () => {
   assert.equal(
-    ALPINE_PACKAGES.rsync.url,
+    ALPINE_PACKAGES.rsync.urls.x86_64,
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
   );
   assert.equal(
-    ALPINE_PACKAGES.openssl.url,
+    ALPINE_PACKAGES.openssl.urls.x86_64,
     "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
   );
+  assert.equal(
+    ALPINE_PACKAGES.rsync.urls.aarch64,
+    "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/rsync-3.4.4-r0.apk",
+  );
+  assert.equal(
+    ALPINE_PACKAGES.openssl.urls.aarch64,
+    "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/openssl-3.5.7-r0.apk",
+  );
+});
+
+await test("maps Node architectures to Alpine package architectures", () => {
+  assert.equal(alpineArchForNodeArch("x64"), "x86_64");
+  assert.equal(alpineArchForNodeArch("arm64"), "aarch64");
+  assert.equal(alpineArchForNodeArch("arm"), undefined);
 });

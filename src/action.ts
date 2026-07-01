@@ -27,25 +27,42 @@ interface Auth {
 }
 
 type ToolPaths = Record<string, string>;
+type AlpineArch = "aarch64" | "x86_64";
 
 interface AlpinePackage {
   cacheName: string;
   version: string;
-  url: string;
+  urls: Record<AlpineArch, string>;
 }
 
 export const ALPINE_PACKAGES = {
   openssl: {
     cacheName: "alpine-openssl",
     version: "3.5.7",
-    url: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
+    urls: {
+      aarch64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/openssl-3.5.7-r0.apk",
+      x86_64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
+    },
   },
   rsync: {
     cacheName: "alpine-rsync",
     version: "3.4.4",
-    url: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
+    urls: {
+      aarch64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/rsync-3.4.4-r0.apk",
+      x86_64: "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
+    },
   },
 } satisfies Record<string, AlpinePackage>;
+
+export function alpineArchForNodeArch(nodeArch: NodeJS.Architecture): AlpineArch | undefined {
+  if (nodeArch === "arm64") {
+    return "aarch64";
+  }
+
+  if (nodeArch === "x64") {
+    return "x86_64";
+  }
+}
 
 const TOOL_PACKAGES: Record<string, keyof typeof ALPINE_PACKAGES> = {
   openssl: "openssl",
@@ -125,7 +142,7 @@ async function ensureTool(tool: string): Promise<string> {
   }
 
   const alpinePackage = ALPINE_PACKAGES[TOOL_PACKAGES[tool]];
-  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.version);
+  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.version, process.arch);
 
   if (cachedDir) {
     core.addPath(path.join(cachedDir, "usr/bin"));
@@ -137,14 +154,17 @@ async function ensureTool(tool: string): Promise<string> {
     }
   }
 
-  if (process.platform !== "linux" || process.arch !== "x64") {
+  const alpineArch = alpineArchForNodeArch(process.arch);
+
+  if (process.platform !== "linux" || !alpineArch) {
     throw new Error(
-      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Alpine downloads support Linux x64 runners only.`,
+      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Alpine downloads support Linux x64 and Linux arm64 runners only.`,
     );
   }
 
-  core.info(`Downloading ${tool} from ${alpinePackage.url}`);
-  const downloaded = await tc.downloadTool(alpinePackage.url);
+  const packageUrl = alpinePackage.urls[alpineArch];
+  core.info(`Downloading ${tool} from ${packageUrl}`);
+  const downloaded = await tc.downloadTool(packageUrl);
   const extracted = await tc.extractTar(downloaded);
   const binDir = path.join(extracted, "usr/bin");
 
@@ -154,7 +174,12 @@ async function ensureTool(tool: string): Promise<string> {
     }
   }
 
-  const cacheDir = await tc.cacheDir(extracted, alpinePackage.cacheName, alpinePackage.version);
+  const cacheDir = await tc.cacheDir(
+    extracted,
+    alpinePackage.cacheName,
+    alpinePackage.version,
+    process.arch,
+  );
   const cachedTool = path.join(cacheDir, "usr/bin", tool);
   await chmod(cachedTool, 0o755);
   core.addPath(path.join(cacheDir, "usr/bin"));
