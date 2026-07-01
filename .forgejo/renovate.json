@@ -13,18 +13,18 @@
   "extends": ["config:recommended"],
   "addLabels": ["dep"],
   "customDatasources": {
-    "alpine-edge-main": {
-      "defaultRegistryUrlTemplate": "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/",
+    "debian-pool": {
+      "defaultRegistryUrlTemplate": "https://deb.debian.org/debian/pool/main/{{ packageName }}/",
       "format": "html"
     }
   },
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update Alpine edge APK package versions",
+      "description": "Update Debian package versions",
       "managerFilePatterns": ["/^src/action\\.ts$/"],
       "matchStrings": [
-        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+apkVersion: \"(?<currentValue>[^\"]+)\""
+        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+debVersion: \"(?<currentValue>[^\"]+)\""
       ],
       "versioningTemplate": "loose"
     }
@@ -55,22 +55,22 @@
       "addLabels": ["actions"]
     },
     {
-      "matchDatasources": ["custom.alpine-edge-main"],
-      "matchPackageNames": ["openssl"],
-      "extractVersion": "^openssl-(?<version>[0-9][^/]*-r\\d+)\\.apk$",
+      "matchDatasources": ["custom.debian-pool"],
+      "matchPackageNames": ["o/openssl"],
+      "extractVersion": "^openssl_(?<version>[^_]+)_amd64\\.deb$",
       "versioning": "loose",
-      "addLabels": ["alpine"],
+      "addLabels": ["debian"],
       "postUpgradeTasks": {
         "commands": ["npm run build"],
         "fileFilters": ["build/index.js"]
       }
     },
     {
-      "matchDatasources": ["custom.alpine-edge-main"],
-      "matchPackageNames": ["rsync"],
-      "extractVersion": "^rsync-(?<version>[0-9][^/]*-r\\d+)\\.apk$",
+      "matchDatasources": ["custom.debian-pool"],
+      "matchPackageNames": ["r/rsync"],
+      "extractVersion": "^rsync_(?<version>[^_]+)_amd64\\.deb$",
       "versioning": "loose",
-      "addLabels": ["alpine"],
+      "addLabels": ["debian"],
       "postUpgradeTasks": {
         "commands": ["npm run build"],
         "fileFilters": ["build/index.js"]

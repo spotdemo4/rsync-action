@@ -2,11 +2,13 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  ALPINE_PACKAGES,
-  alpineArchForNodeArch,
-  alpinePackageUrl,
   buildRemoteSpec,
   buildRsyncArgs,
+  DEBIAN_PACKAGES,
+  debianArchForNodeArch,
+  debianPackageUrl,
+  debianToolCacheVersion,
+  expandHomePath,
   parseSecret,
   requiredTools,
   type ActionInputs,
@@ -85,32 +87,44 @@ await test("requires TLS helpers only when TLS is enabled", () => {
   assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl"]);
 });
 
-await test("uses hardcoded Alpine package versions for missing tools", () => {
-  assert.equal(ALPINE_PACKAGES.rsync.apkVersion, "3.4.4-r0");
-  assert.equal(ALPINE_PACKAGES.openssl.apkVersion, "3.5.7-r0");
+await test("expands leading tilde local paths", () => {
+  assert.equal(expandHomePath("~", "/home/runner"), "/home/runner");
+  assert.equal(
+    expandHomePath("~/.codex/auth.json", "/home/runner"),
+    "/home/runner/.codex/auth.json",
+  );
+  assert.equal(expandHomePath("project/~file", "/home/runner"), "project/~file");
+  assert.throws(() => expandHomePath("~/project", ""), /HOME is not set/);
 });
 
-await test("builds Alpine package URLs for supported architectures", () => {
+await test("uses hardcoded Debian package versions for missing tools", () => {
+  assert.equal(DEBIAN_PACKAGES.rsync.debVersion, "3.4.4+ds1-1");
+  assert.equal(DEBIAN_PACKAGES.openssl.debVersion, "4.0.1-1");
+  assert.equal(debianToolCacheVersion("rsync"), "3.4.4-ds1-1");
+  assert.equal(debianToolCacheVersion("openssl"), "4.0.1-1");
+});
+
+await test("builds Debian package URLs for supported architectures", () => {
   assert.equal(
-    alpinePackageUrl("rsync", "x86_64"),
-    "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/rsync-3.4.4-r0.apk",
+    debianPackageUrl("rsync", "amd64"),
+    "https://deb.debian.org/debian/pool/main/r/rsync/rsync_3.4.4+ds1-1_amd64.deb",
   );
   assert.equal(
-    alpinePackageUrl("openssl", "x86_64"),
-    "https://dl-cdn.alpinelinux.org/alpine/edge/main/x86_64/openssl-3.5.7-r0.apk",
+    debianPackageUrl("openssl", "amd64"),
+    "https://deb.debian.org/debian/pool/main/o/openssl/openssl_4.0.1-1_amd64.deb",
   );
   assert.equal(
-    alpinePackageUrl("rsync", "aarch64"),
-    "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/rsync-3.4.4-r0.apk",
+    debianPackageUrl("rsync", "arm64"),
+    "https://deb.debian.org/debian/pool/main/r/rsync/rsync_3.4.4+ds1-1_arm64.deb",
   );
   assert.equal(
-    alpinePackageUrl("openssl", "aarch64"),
-    "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/openssl-3.5.7-r0.apk",
+    debianPackageUrl("openssl", "arm64"),
+    "https://deb.debian.org/debian/pool/main/o/openssl/openssl_4.0.1-1_arm64.deb",
   );
 });
 
-await test("maps Node architectures to Alpine package architectures", () => {
-  assert.equal(alpineArchForNodeArch("x64"), "x86_64");
-  assert.equal(alpineArchForNodeArch("arm64"), "aarch64");
-  assert.equal(alpineArchForNodeArch("arm"), undefined);
+await test("maps Node architectures to Debian package architectures", () => {
+  assert.equal(debianArchForNodeArch("x64"), "amd64");
+  assert.equal(debianArchForNodeArch("arm64"), "arm64");
+  assert.equal(debianArchForNodeArch("arm"), undefined);
 });

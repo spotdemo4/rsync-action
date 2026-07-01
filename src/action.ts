@@ -1,4 +1,5 @@
-import { chmod } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
 import * as core from "@actions/core";
@@ -27,50 +28,117 @@ interface Auth {
 }
 
 type ToolPaths = Record<string, string>;
-type AlpineArch = "aarch64" | "x86_64";
+type DebianArch = "amd64" | "arm64";
 
-interface AlpinePackage {
+interface DebianPackage {
+  binaryPackage: string;
   cacheName: string;
-  apkVersion: string;
+  debVersion: string;
+  poolPath: string;
 }
 
-const ALPINE_REPOSITORY_URL = "https://dl-cdn.alpinelinux.org/alpine/edge/main";
+const DEBIAN_REPOSITORY_URL = "https://deb.debian.org/debian/pool/main";
 
-export const ALPINE_PACKAGES = {
+export const DEBIAN_PACKAGES = {
   openssl: {
-    cacheName: "alpine-openssl",
-    // renovate: datasource=custom.alpine-edge-main depName=openssl packageName=openssl
-    apkVersion: "3.5.7-r0",
+    binaryPackage: "openssl",
+    cacheName: "debian-openssl",
+    // renovate: datasource=custom.debian-pool depName=openssl packageName=o/openssl
+    debVersion: "4.0.1-1",
+    poolPath: "o/openssl",
   },
   rsync: {
-    cacheName: "alpine-rsync",
-    // renovate: datasource=custom.alpine-edge-main depName=rsync packageName=rsync
-    apkVersion: "3.4.4-r0",
+    binaryPackage: "rsync",
+    cacheName: "debian-rsync",
+    // renovate: datasource=custom.debian-pool depName=rsync packageName=r/rsync
+    debVersion: "3.4.4+ds1-1",
+    poolPath: "r/rsync",
   },
-} satisfies Record<string, AlpinePackage>;
+} satisfies Record<string, DebianPackage>;
 
-export function alpinePackageUrl(
-  packageName: keyof typeof ALPINE_PACKAGES,
-  alpineArch: AlpineArch,
+export function debianPackageUrl(
+  packageName: keyof typeof DEBIAN_PACKAGES,
+  debianArch: DebianArch,
 ): string {
-  return `${ALPINE_REPOSITORY_URL}/${alpineArch}/${packageName}-${ALPINE_PACKAGES[packageName].apkVersion}.apk`;
+  const debianPackage = DEBIAN_PACKAGES[packageName];
+
+  return `${DEBIAN_REPOSITORY_URL}/${debianPackage.poolPath}/${debianPackage.binaryPackage}_${debianPackage.debVersion}_${debianArch}.deb`;
 }
 
-export function alpineArchForNodeArch(nodeArch: NodeJS.Architecture): AlpineArch | undefined {
+export function debianArchForNodeArch(nodeArch: NodeJS.Architecture): DebianArch | undefined {
   if (nodeArch === "arm64") {
-    return "aarch64";
+    return "arm64";
   }
 
   if (nodeArch === "x64") {
-    return "x86_64";
+    return "amd64";
   }
 }
 
-const TOOL_PACKAGES: Record<string, keyof typeof ALPINE_PACKAGES> = {
+export function debianToolCacheVersion(packageName: keyof typeof DEBIAN_PACKAGES): string {
+  return DEBIAN_PACKAGES[packageName].debVersion.replace(/[+~]/g, "-");
+}
+
+const TOOL_PACKAGES: Record<string, keyof typeof DEBIAN_PACKAGES> = {
   openssl: "openssl",
   rsync: "rsync",
   "rsync-ssl": "rsync",
 };
+
+function tarFlagsForArchive(name: string): string | string[] {
+  if (name.endsWith(".tar.gz")) {
+    return "xz";
+  }
+
+  if (name.endsWith(".tar.xz")) {
+    return "xJ";
+  }
+
+  if (name.endsWith(".tar.zst")) {
+    return ["--zstd", "-x"];
+  }
+
+  throw new Error(`Unsupported Debian package data archive: ${name}`);
+}
+
+async function extractDebianPackage(debPath: string): Promise<string> {
+  const archive = await readFile(debPath);
+
+  if (archive.subarray(0, 8).toString("utf8") !== "!<arch>\n") {
+    throw new Error("Downloaded Debian package is not an ar archive.");
+  }
+
+  let offset = 8;
+
+  while (offset + 60 <= archive.length) {
+    const header = archive.subarray(offset, offset + 60);
+    const name = header.subarray(0, 16).toString("utf8").trim().replace(/\/$/, "");
+    const size = Number.parseInt(header.subarray(48, 58).toString("utf8").trim(), 10);
+
+    if (header.subarray(58, 60).toString("utf8") !== "`\n" || !Number.isFinite(size)) {
+      throw new Error("Downloaded Debian package has an invalid ar member header.");
+    }
+
+    const dataStart = offset + 60;
+    const dataEnd = dataStart + size;
+
+    if (dataEnd > archive.length) {
+      throw new Error("Downloaded Debian package has a truncated ar member.");
+    }
+
+    if (name.startsWith("data.tar")) {
+      const tempDir = await mkdtemp(path.join(tmpdir(), "rsync-action-deb-"));
+      const dataArchive = path.join(tempDir, name);
+      await writeFile(dataArchive, archive.subarray(dataStart, dataEnd));
+
+      return tc.extractTar(dataArchive, path.join(tempDir, "data"), tarFlagsForArchive(name));
+    }
+
+    offset = dataEnd + (size % 2);
+  }
+
+  throw new Error("Downloaded Debian package does not contain a data.tar archive.");
+}
 
 export function parseSecret(secret: string): Auth {
   const separator = secret.indexOf(":");
@@ -119,6 +187,18 @@ export function buildRsyncArgs(
   return inputs.tls ? ["--type=openssl", ...args] : args;
 }
 
+export function expandHomePath(localPath: string, home = process.env.HOME): string {
+  if (localPath !== "~" && !localPath.startsWith("~/")) {
+    return localPath;
+  }
+
+  if (!home) {
+    throw new Error("Cannot expand input 'local-path' because HOME is not set.");
+  }
+
+  return `${home}${localPath.slice(1)}`;
+}
+
 export function requiredTools(tls: boolean): string[] {
   return tls ? ["rsync", "rsync-ssl", "openssl"] : ["rsync"];
 }
@@ -128,7 +208,7 @@ function getInputs(): ActionInputs {
     server: core.getInput("server", { required: true }),
     module: core.getInput("module", { required: true }),
     remotePath: core.getInput("remote-path"),
-    localPath: core.getInput("local-path", { required: true }),
+    localPath: expandHomePath(core.getInput("local-path", { required: true })),
     secret: core.getInput("secret", { required: true }),
     tls: core.getBooleanInput("tls"),
     rsyncArgs: core.getMultilineInput("rsync-args"),
@@ -143,8 +223,9 @@ async function ensureTool(tool: string): Promise<string> {
     return fromPath;
   }
 
-  const alpinePackage = ALPINE_PACKAGES[TOOL_PACKAGES[tool]];
-  const cachedDir = tc.find(alpinePackage.cacheName, alpinePackage.apkVersion, process.arch);
+  const debianPackage = DEBIAN_PACKAGES[TOOL_PACKAGES[tool]];
+  const cacheVersion = debianToolCacheVersion(TOOL_PACKAGES[tool]);
+  const cachedDir = tc.find(debianPackage.cacheName, cacheVersion, process.arch);
 
   if (cachedDir) {
     core.addPath(path.join(cachedDir, "usr/bin"));
@@ -156,19 +237,19 @@ async function ensureTool(tool: string): Promise<string> {
     }
   }
 
-  const alpineArch = alpineArchForNodeArch(process.arch);
+  const debianArch = debianArchForNodeArch(process.arch);
 
-  if (process.platform !== "linux" || !alpineArch) {
+  if (process.platform !== "linux" || !debianArch) {
     throw new Error(
-      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Alpine downloads support Linux x64 and Linux arm64 runners only.`,
+      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Debian downloads support Linux x64 and Linux arm64 runners only.`,
     );
   }
 
   const packageName = TOOL_PACKAGES[tool];
-  const packageUrl = alpinePackageUrl(packageName, alpineArch);
+  const packageUrl = debianPackageUrl(packageName, debianArch);
   core.info(`Downloading ${tool} from ${packageUrl}`);
   const downloaded = await tc.downloadTool(packageUrl);
-  const extracted = await tc.extractTar(downloaded);
+  const extracted = await extractDebianPackage(downloaded);
   const binDir = path.join(extracted, "usr/bin");
 
   for (const executable of ["rsync", "rsync-ssl", "openssl"]) {
@@ -179,8 +260,8 @@ async function ensureTool(tool: string): Promise<string> {
 
   const cacheDir = await tc.cacheDir(
     extracted,
-    alpinePackage.cacheName,
-    alpinePackage.apkVersion,
+    debianPackage.cacheName,
+    cacheVersion,
     process.arch,
   );
   const cachedTool = path.join(cacheDir, "usr/bin", tool);
