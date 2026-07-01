@@ -23,10 +23,6 @@ inputs:
     description: Use rsync-ssl for a TLS-protected rsync daemon
     required: false
     default: "false"
-  tls-type:
-    description: TLS helper type for rsync-ssl, either openssl or stunnel
-    required: false
-    default: openssl
   rsync-args:
     description: Newline-separated rsync arguments used for both pull and push
     required: false
@@ -43,9 +39,6 @@ inputs:
     required: false
   openssl-download-url:
     description: Direct executable download URL used if openssl is missing from PATH and the tool cache
-    required: false
-  stunnel-download-url:
-    description: Direct executable download URL used if stunnel is missing from PATH and the tool cache
     required: false
 
 runs:

@@ -17,7 +17,6 @@ function inputs(overrides: Partial<ActionInputs> = {}): ActionInputs {
     localPath: "project/",
     secret: "alice:correct-horse:battery-staple",
     tls: false,
-    tlsType: "openssl",
     rsyncArgs: ["--archive", "--delete"],
     toolVersion: "1.0.0",
     downloadUrls: {},
@@ -68,11 +67,11 @@ await test("builds pull and push argument order", () => {
   ]);
 });
 
-await test("adds rsync-ssl type as the first TLS argument", () => {
+await test("forces openssl as the first TLS argument", () => {
   const auth = parseSecret("alice:password");
 
-  assert.deepEqual(buildRsyncArgs(inputs({ tls: true, tlsType: "stunnel" }), auth, "pull"), [
-    "--type=stunnel",
+  assert.deepEqual(buildRsyncArgs(inputs({ tls: true }), auth, "pull"), [
+    "--type=openssl",
     "--archive",
     "--delete",
     "rsync://alice@example.com:873/backups/project/",
@@ -82,5 +81,5 @@ await test("adds rsync-ssl type as the first TLS argument", () => {
 
 await test("requires TLS helpers only when TLS is enabled", () => {
   assert.deepEqual(requiredTools(false), ["rsync"]);
-  assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl", "stunnel"]);
+  assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl"]);
 });

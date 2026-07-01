@@ -10,7 +10,6 @@ const READY_STATE = "rsync-action-ready";
 const POST_STATE = "rsync-action-post";
 
 type SyncDirection = "pull" | "push";
-type TlsType = "openssl" | "stunnel";
 
 export interface ActionInputs {
   server: string;
@@ -19,7 +18,6 @@ export interface ActionInputs {
   localPath: string;
   secret: string;
   tls: boolean;
-  tlsType: TlsType;
   rsyncArgs: string[];
   toolVersion: string;
   downloadUrls: Record<string, string>;
@@ -76,25 +74,17 @@ export function buildRsyncArgs(
   const endpoints = direction === "pull" ? [remote, inputs.localPath] : [inputs.localPath, remote];
   const args = [...inputs.rsyncArgs, ...endpoints];
 
-  return inputs.tls ? [`--type=${inputs.tlsType}`, ...args] : args;
+  return inputs.tls ? ["--type=openssl", ...args] : args;
 }
 
 export function requiredTools(tls: boolean): string[] {
-  return tls ? ["rsync", "rsync-ssl", "openssl", "stunnel"] : ["rsync"];
-}
-
-function getTlsType(value: string): TlsType {
-  if (value === "openssl" || value === "stunnel") {
-    return value;
-  }
-
-  throw new Error("Input 'tls-type' must be either 'openssl' or 'stunnel'.");
+  return tls ? ["rsync", "rsync-ssl", "openssl"] : ["rsync"];
 }
 
 function getInputs(): ActionInputs {
   const downloadUrls: Record<string, string> = {};
 
-  for (const tool of ["rsync", "rsync-ssl", "openssl", "stunnel"]) {
+  for (const tool of ["rsync", "rsync-ssl", "openssl"]) {
     downloadUrls[tool] = core.getInput(`${tool}-download-url`);
   }
 
@@ -105,7 +95,6 @@ function getInputs(): ActionInputs {
     localPath: core.getInput("local-path", { required: true }),
     secret: core.getInput("secret", { required: true }),
     tls: core.getBooleanInput("tls"),
-    tlsType: getTlsType(core.getInput("tls-type") || "openssl"),
     rsyncArgs: core.getMultilineInput("rsync-args"),
     toolVersion: core.getInput("tool-version") || "1.0.0",
     downloadUrls,
@@ -185,10 +174,6 @@ function rsyncEnv(auth: Auth, tools: ToolPaths): Record<string, string> {
 
   if (tools.openssl) {
     env.RSYNC_SSL_OPENSSL = tools.openssl;
-  }
-
-  if (tools.stunnel) {
-    env.RSYNC_SSL_STUNNEL = tools.stunnel;
   }
 
   return env;
