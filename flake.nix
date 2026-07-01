@@ -171,10 +171,6 @@
           nix = {
             root = ./.;
             filter = file: file.hasExt "nix";
-            ignore = [
-              ./build
-              ./node_modules
-            ];
             packages = with pkgs; [
               nixfmt
             ];
@@ -236,10 +232,6 @@
           config = {
             root = ./.;
             filter = file: file.hasExt "json" || file.hasExt "yaml" || file.hasExt "toml" || file.hasExt "md";
-            ignore = [
-              ./build
-              ./node_modules
-            ];
             packages = with pkgs; [
               oxfmt
             ];
