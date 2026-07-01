@@ -20,7 +20,7 @@ inputs:
     description: rsync daemon credentials in username:password format
     required: true
   tls:
-    description: Use rsync-ssl for a TLS-protected rsync daemon
+    description: Use TLS for an rsync daemon
     required: false
     default: "true"
   rsync-args:

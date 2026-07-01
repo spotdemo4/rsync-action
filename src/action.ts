@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -28,116 +28,46 @@ interface Auth {
 }
 
 type ToolPaths = Record<string, string>;
-type DebianArch = "amd64" | "arm64";
+type StaticRsyncAsset = "aarch64-unknown-linux-musl" | "x86_64-unknown-linux-musl";
 
-interface DebianPackage {
-  binaryPackage: string;
+interface StaticRsyncRelease {
   cacheName: string;
-  debVersion: string;
-  poolPath: string;
+  owner: string;
+  repo: string;
+  version: string;
 }
 
-const DEBIAN_REPOSITORY_URL = "https://deb.debian.org/debian/pool/main";
+export const STATIC_RSYNC_RELEASE = {
+  cacheName: "static-rsync",
+  owner: "spotdemo4",
+  repo: "rsync-action",
+  // renovate: datasource=github-releases depName=rsync packageName=spotdemo4/rsync-action
+  version: "3.4.4",
+} satisfies StaticRsyncRelease;
 
-export const DEBIAN_PACKAGES = {
-  openssl: {
-    binaryPackage: "openssl",
-    cacheName: "debian-openssl",
-    // renovate: datasource=custom.debian-pool depName=openssl packageName=o/openssl
-    debVersion: "4.0.1-1",
-    poolPath: "o/openssl",
-  },
-  rsync: {
-    binaryPackage: "rsync",
-    cacheName: "debian-rsync",
-    // renovate: datasource=custom.debian-pool depName=rsync packageName=r/rsync
-    debVersion: "3.4.4+ds1-1",
-    poolPath: "r/rsync",
-  },
-} satisfies Record<string, DebianPackage>;
-
-export function debianPackageUrl(
-  packageName: keyof typeof DEBIAN_PACKAGES,
-  debianArch: DebianArch,
-): string {
-  const debianPackage = DEBIAN_PACKAGES[packageName];
-
-  return `${DEBIAN_REPOSITORY_URL}/${debianPackage.poolPath}/${debianPackage.binaryPackage}_${debianPackage.debVersion}_${debianArch}.deb`;
+export function staticRsyncReleaseTag(version = STATIC_RSYNC_RELEASE.version): string {
+  return `rsync-v${version}`;
 }
 
-export function debianArchForNodeArch(nodeArch: NodeJS.Architecture): DebianArch | undefined {
+export function staticRsyncAssetForNodeArch(
+  nodeArch: NodeJS.Architecture,
+): StaticRsyncAsset | undefined {
   if (nodeArch === "arm64") {
-    return "arm64";
+    return "aarch64-unknown-linux-musl";
   }
 
   if (nodeArch === "x64") {
-    return "amd64";
+    return "x86_64-unknown-linux-musl";
   }
 }
 
-export function debianToolCacheVersion(packageName: keyof typeof DEBIAN_PACKAGES): string {
-  return DEBIAN_PACKAGES[packageName].debVersion.replace(/[+~]/g, "-");
-}
+export function staticRsyncUrl(
+  asset: StaticRsyncAsset,
+  version = STATIC_RSYNC_RELEASE.version,
+): string {
+  const { owner, repo } = STATIC_RSYNC_RELEASE;
 
-const TOOL_PACKAGES: Record<string, keyof typeof DEBIAN_PACKAGES> = {
-  openssl: "openssl",
-  rsync: "rsync",
-  "rsync-ssl": "rsync",
-};
-
-function tarFlagsForArchive(name: string): string | string[] {
-  if (name.endsWith(".tar.gz")) {
-    return "xz";
-  }
-
-  if (name.endsWith(".tar.xz")) {
-    return "xJ";
-  }
-
-  if (name.endsWith(".tar.zst")) {
-    return ["--zstd", "-x"];
-  }
-
-  throw new Error(`Unsupported Debian package data archive: ${name}`);
-}
-
-async function extractDebianPackage(debPath: string): Promise<string> {
-  const archive = await readFile(debPath);
-
-  if (archive.subarray(0, 8).toString("utf8") !== "!<arch>\n") {
-    throw new Error("Downloaded Debian package is not an ar archive.");
-  }
-
-  let offset = 8;
-
-  while (offset + 60 <= archive.length) {
-    const header = archive.subarray(offset, offset + 60);
-    const name = header.subarray(0, 16).toString("utf8").trim().replace(/\/$/, "");
-    const size = Number.parseInt(header.subarray(48, 58).toString("utf8").trim(), 10);
-
-    if (header.subarray(58, 60).toString("utf8") !== "`\n" || !Number.isFinite(size)) {
-      throw new Error("Downloaded Debian package has an invalid ar member header.");
-    }
-
-    const dataStart = offset + 60;
-    const dataEnd = dataStart + size;
-
-    if (dataEnd > archive.length) {
-      throw new Error("Downloaded Debian package has a truncated ar member.");
-    }
-
-    if (name.startsWith("data.tar")) {
-      const tempDir = await mkdtemp(path.join(tmpdir(), "rsync-action-deb-"));
-      const dataArchive = path.join(tempDir, name);
-      await writeFile(dataArchive, archive.subarray(dataStart, dataEnd));
-
-      return tc.extractTar(dataArchive, path.join(tempDir, "data"), tarFlagsForArchive(name));
-    }
-
-    offset = dataEnd + (size % 2);
-  }
-
-  throw new Error("Downloaded Debian package does not contain a data.tar archive.");
+  return `https://github.com/${owner}/${repo}/releases/download/${staticRsyncReleaseTag(version)}/${asset}`;
 }
 
 export function parseSecret(secret: string): Auth {
@@ -179,12 +109,21 @@ export function buildRsyncArgs(
   inputs: ActionInputs,
   auth: Auth,
   direction: SyncDirection,
+  tlsHelper?: string,
 ): string[] {
   const remote = buildRemoteSpec({ ...inputs, username: auth.username });
   const endpoints = direction === "pull" ? [remote, inputs.localPath] : [inputs.localPath, remote];
   const args = [...inputs.rsyncArgs, ...endpoints];
 
-  return inputs.tls ? ["--type=openssl", ...args] : args;
+  if (!inputs.tls) {
+    return args;
+  }
+
+  if (!tlsHelper) {
+    throw new Error("TLS sync requires an rsync remote-shell helper.");
+  }
+
+  return [`--rsh=${tlsHelper}`, ...args];
 }
 
 export function expandHomePath(localPath: string, home = process.env.HOME): string {
@@ -199,8 +138,8 @@ export function expandHomePath(localPath: string, home = process.env.HOME): stri
   return `${home}${localPath.slice(1)}`;
 }
 
-export function requiredTools(tls: boolean): string[] {
-  return tls ? ["rsync", "rsync-ssl", "openssl"] : ["rsync"];
+export function requiredTools(_tls: boolean): string[] {
+  return ["rsync"];
 }
 
 function getInputs(): ActionInputs {
@@ -223,12 +162,14 @@ async function ensureTool(tool: string): Promise<string> {
     return fromPath;
   }
 
-  const debianPackage = DEBIAN_PACKAGES[TOOL_PACKAGES[tool]];
-  const cacheVersion = debianToolCacheVersion(TOOL_PACKAGES[tool]);
-  const cachedDir = tc.find(debianPackage.cacheName, cacheVersion, process.arch);
+  const cachedDir = tc.find(
+    STATIC_RSYNC_RELEASE.cacheName,
+    STATIC_RSYNC_RELEASE.version,
+    process.arch,
+  );
 
   if (cachedDir) {
-    core.addPath(path.join(cachedDir, "usr/bin"));
+    core.addPath(cachedDir);
 
     const fromCache = await io.which(tool, false);
     if (fromCache) {
@@ -237,38 +178,102 @@ async function ensureTool(tool: string): Promise<string> {
     }
   }
 
-  const debianArch = debianArchForNodeArch(process.arch);
+  const staticRsyncAsset = staticRsyncAssetForNodeArch(process.arch);
 
-  if (process.platform !== "linux" || !debianArch) {
+  if (process.platform !== "linux" || !staticRsyncAsset) {
     throw new Error(
-      `Could not find ${tool} in PATH or the Actions tool cache. Built-in Debian downloads support Linux x64 and Linux arm64 runners only.`,
+      `Could not find ${tool} in PATH or the Actions tool cache. Built-in static rsync downloads support Linux x64 and Linux arm64 runners only.`,
     );
   }
 
-  const packageName = TOOL_PACKAGES[tool];
-  const packageUrl = debianPackageUrl(packageName, debianArch);
-  core.info(`Downloading ${tool} from ${packageUrl}`);
-  const downloaded = await tc.downloadTool(packageUrl);
-  const extracted = await extractDebianPackage(downloaded);
-  const binDir = path.join(extracted, "usr/bin");
+  const staticRsyncDownloadUrl = staticRsyncUrl(staticRsyncAsset);
+  core.info(`Downloading ${tool} from ${staticRsyncDownloadUrl}`);
+  const downloaded = await tc.downloadTool(staticRsyncDownloadUrl);
+  await chmod(downloaded, 0o755);
 
-  for (const executable of ["rsync", "rsync-ssl", "openssl"]) {
-    if (TOOL_PACKAGES[executable] === TOOL_PACKAGES[tool]) {
-      await chmod(path.join(binDir, executable), 0o755);
-    }
-  }
-
-  const cacheDir = await tc.cacheDir(
-    extracted,
-    debianPackage.cacheName,
-    cacheVersion,
+  const cacheDir = await tc.cacheFile(
+    downloaded,
+    "rsync",
+    STATIC_RSYNC_RELEASE.cacheName,
+    STATIC_RSYNC_RELEASE.version,
     process.arch,
   );
-  const cachedTool = path.join(cacheDir, "usr/bin", tool);
+  const cachedTool = path.join(cacheDir, tool);
   await chmod(cachedTool, 0o755);
-  core.addPath(path.join(cacheDir, "usr/bin"));
+  core.addPath(cacheDir);
 
   return cachedTool;
+}
+
+async function createTlsHelper(): Promise<string> {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "rsync-action-tls-"));
+  const helper = path.join(tempDir, "rsync-tls-helper");
+  const script =
+    `#!${process.execPath}
+const fs = require("node:fs");
+const tls = require("node:tls");
+
+let args = process.argv.slice(2);
+
+if (args[0] === "-l") {
+  args = args.slice(2);
+}
+
+const [hostname, command, serverFlag, daemonFlag] = args;
+
+if (!hostname || command !== "rsync" || serverFlag !== "--server" || daemonFlag !== "--daemon") {
+  console.error("Usage: rsync-tls-helper HOSTNAME rsync --server --daemon .");
+  process.exit(1);
+}
+
+const port = Number.parseInt(process.env.RSYNC_PORT || process.env.RSYNC_SSL_PORT || "874", 10);
+
+if (!Number.isFinite(port) || port <= 0) {
+  console.error("Invalid rsync TLS port.");
+  process.exit(1);
+}
+
+const options = {
+  host: hostname,
+  port,
+  servername: hostname,
+};
+
+if (process.env.RSYNC_SSL_CA_CERT === "") {
+  options.rejectUnauthorized = false;
+} else if (process.env.RSYNC_SSL_CA_CERT) {
+  options.ca = fs.readFileSync(process.env.RSYNC_SSL_CA_CERT);
+}
+
+if (process.env.RSYNC_SSL_CERT) {
+  options.cert = fs.readFileSync(process.env.RSYNC_SSL_CERT);
+}
+
+if (process.env.RSYNC_SSL_KEY) {
+  options.key = fs.readFileSync(process.env.RSYNC_SSL_KEY);
+}
+
+const socket = tls.connect(options, () => {
+  process.stdin.pipe(socket);
+  socket.pipe(process.stdout);
+});
+
+socket.on("error", (error) => {
+  console.error(` +
+    "`rsync TLS connection failed: ${error.message}`" +
+    `);
+  process.exitCode = 1;
+});
+
+socket.on("close", () => {
+  process.exit(process.exitCode ?? 0);
+});
+`;
+
+  await writeFile(helper, script);
+  await chmod(helper, 0o755);
+
+  return helper;
 }
 
 async function ensureTools(inputs: ActionInputs): Promise<ToolPaths> {
@@ -276,6 +281,10 @@ async function ensureTools(inputs: ActionInputs): Promise<ToolPaths> {
 
   for (const tool of requiredTools(inputs.tls)) {
     tools[tool] = await ensureTool(tool);
+  }
+
+  if (inputs.tls) {
+    tools.tlsHelper = await createTlsHelper();
   }
 
   return tools;
@@ -289,7 +298,7 @@ async function mkdirLocalParent(localPath: string): Promise<void> {
   }
 }
 
-function rsyncEnv(auth: Auth, tools: ToolPaths): Record<string, string> {
+function rsyncEnv(auth: Auth): Record<string, string> {
   const env: Record<string, string> = {};
 
   for (const [key, value] of Object.entries(process.env)) {
@@ -299,10 +308,6 @@ function rsyncEnv(auth: Auth, tools: ToolPaths): Record<string, string> {
   }
 
   env.RSYNC_PASSWORD = auth.password;
-
-  if (tools.openssl) {
-    env.RSYNC_SSL_OPENSSL = tools.openssl;
-  }
 
   return env;
 }
@@ -317,10 +322,13 @@ async function sync(
     await mkdirLocalParent(inputs.localPath);
   }
 
-  const command = inputs.tls ? tools["rsync-ssl"] : tools.rsync;
-  const exitCode = await exec.exec(command, buildRsyncArgs(inputs, auth, direction), {
-    env: rsyncEnv(auth, tools),
-  });
+  const exitCode = await exec.exec(
+    tools.rsync,
+    buildRsyncArgs(inputs, auth, direction, tools.tlsHelper),
+    {
+      env: rsyncEnv(auth),
+    },
+  );
 
   if (exitCode !== 0) {
     throw new Error(`${direction} rsync exited with code ${exitCode}.`);

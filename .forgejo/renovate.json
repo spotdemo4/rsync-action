@@ -12,21 +12,15 @@
   // repository
   "extends": ["config:recommended"],
   "addLabels": ["dep"],
-  "customDatasources": {
-    "debian-pool": {
-      "defaultRegistryUrlTemplate": "https://deb.debian.org/debian/pool/main/{{ packageName }}/",
-      "format": "html"
-    }
-  },
   "customManagers": [
     {
       "customType": "regex",
-      "description": "Update Debian package versions",
+      "description": "Update static rsync release version",
       "managerFilePatterns": ["/^src/action\\.ts$/"],
       "matchStrings": [
-        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+debVersion: \"(?<currentValue>[^\"]+)\""
+        "// renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+) packageName=(?<packageName>\\S+)\\s+version: \"(?<currentValue>[^\"]+)\""
       ],
-      "versioningTemplate": "loose"
+      "versioningTemplate": "semver"
     }
   ],
   "nix": {
@@ -55,22 +49,11 @@
       "addLabels": ["actions"]
     },
     {
-      "matchDatasources": ["custom.debian-pool"],
-      "matchPackageNames": ["o/openssl"],
-      "extractVersion": "^openssl_(?<version>[^_]+)_amd64\\.deb$",
-      "versioning": "loose",
-      "addLabels": ["debian"],
-      "postUpgradeTasks": {
-        "commands": ["npm run build"],
-        "fileFilters": ["build/index.js"]
-      }
-    },
-    {
-      "matchDatasources": ["custom.debian-pool"],
-      "matchPackageNames": ["r/rsync"],
-      "extractVersion": "^rsync_(?<version>[^_]+)_amd64\\.deb$",
-      "versioning": "loose",
-      "addLabels": ["debian"],
+      "matchDatasources": ["github-releases"],
+      "matchPackageNames": ["spotdemo4/rsync-action"],
+      "extractVersion": "^rsync-v(?<version>.+)$",
+      "versioning": "semver",
+      "addLabels": ["rsync"],
       "postUpgradeTasks": {
         "commands": ["npm run build"],
         "fileFilters": ["build/index.js"]

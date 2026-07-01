@@ -4,13 +4,13 @@ import { test } from "node:test";
 import {
   buildRemoteSpec,
   buildRsyncArgs,
-  DEBIAN_PACKAGES,
-  debianArchForNodeArch,
-  debianPackageUrl,
-  debianToolCacheVersion,
   expandHomePath,
   parseSecret,
   requiredTools,
+  STATIC_RSYNC_RELEASE,
+  staticRsyncAssetForNodeArch,
+  staticRsyncReleaseTag,
+  staticRsyncUrl,
   type ActionInputs,
 } from "../src/action.ts";
 
@@ -70,21 +70,22 @@ await test("builds pull and push argument order", () => {
   ]);
 });
 
-await test("forces openssl as the first TLS argument", () => {
+await test("uses the TLS helper as rsync's remote shell", () => {
   const auth = parseSecret("alice:password");
 
-  assert.deepEqual(buildRsyncArgs(inputs({ tls: true }), auth, "pull"), [
-    "--type=openssl",
+  assert.deepEqual(buildRsyncArgs(inputs({ tls: true }), auth, "pull", "/tmp/rsync-tls-helper"), [
+    "--rsh=/tmp/rsync-tls-helper",
     "--archive",
     "--delete",
     "rsync://alice@example.com:873/backups/project/",
     "project/",
   ]);
+  assert.throws(() => buildRsyncArgs(inputs({ tls: true }), auth, "pull"), /TLS sync/);
 });
 
-await test("requires TLS helpers only when TLS is enabled", () => {
+await test("requires rsync for plain and TLS syncs", () => {
   assert.deepEqual(requiredTools(false), ["rsync"]);
-  assert.deepEqual(requiredTools(true), ["rsync", "rsync-ssl", "openssl"]);
+  assert.deepEqual(requiredTools(true), ["rsync"]);
 });
 
 await test("expands leading tilde local paths", () => {
@@ -97,34 +98,26 @@ await test("expands leading tilde local paths", () => {
   assert.throws(() => expandHomePath("~/project", ""), /HOME is not set/);
 });
 
-await test("uses hardcoded Debian package versions for missing tools", () => {
-  assert.equal(DEBIAN_PACKAGES.rsync.debVersion, "3.4.4+ds1-1");
-  assert.equal(DEBIAN_PACKAGES.openssl.debVersion, "4.0.1-1");
-  assert.equal(debianToolCacheVersion("rsync"), "3.4.4-ds1-1");
-  assert.equal(debianToolCacheVersion("openssl"), "4.0.1-1");
+await test("uses the configured static rsync release", () => {
+  assert.equal(STATIC_RSYNC_RELEASE.owner, "spotdemo4");
+  assert.equal(STATIC_RSYNC_RELEASE.repo, "rsync-action");
+  assert.equal(STATIC_RSYNC_RELEASE.version, "3.4.4");
+  assert.equal(staticRsyncReleaseTag(), "rsync-v3.4.4");
 });
 
-await test("builds Debian package URLs for supported architectures", () => {
+await test("builds GitHub release URLs for static rsync assets", () => {
   assert.equal(
-    debianPackageUrl("rsync", "amd64"),
-    "https://deb.debian.org/debian/pool/main/r/rsync/rsync_3.4.4+ds1-1_amd64.deb",
+    staticRsyncUrl("x86_64-unknown-linux-musl"),
+    "https://github.com/spotdemo4/rsync-action/releases/download/rsync-v3.4.4/x86_64-unknown-linux-musl",
   );
   assert.equal(
-    debianPackageUrl("openssl", "amd64"),
-    "https://deb.debian.org/debian/pool/main/o/openssl/openssl_4.0.1-1_amd64.deb",
-  );
-  assert.equal(
-    debianPackageUrl("rsync", "arm64"),
-    "https://deb.debian.org/debian/pool/main/r/rsync/rsync_3.4.4+ds1-1_arm64.deb",
-  );
-  assert.equal(
-    debianPackageUrl("openssl", "arm64"),
-    "https://deb.debian.org/debian/pool/main/o/openssl/openssl_4.0.1-1_arm64.deb",
+    staticRsyncUrl("aarch64-unknown-linux-musl"),
+    "https://github.com/spotdemo4/rsync-action/releases/download/rsync-v3.4.4/aarch64-unknown-linux-musl",
   );
 });
 
-await test("maps Node architectures to Debian package architectures", () => {
-  assert.equal(debianArchForNodeArch("x64"), "amd64");
-  assert.equal(debianArchForNodeArch("arm64"), "arm64");
-  assert.equal(debianArchForNodeArch("arm"), undefined);
+await test("maps Node architectures to static rsync release assets", () => {
+  assert.equal(staticRsyncAssetForNodeArch("x64"), "x86_64-unknown-linux-musl");
+  assert.equal(staticRsyncAssetForNodeArch("arm64"), "aarch64-unknown-linux-musl");
+  assert.equal(staticRsyncAssetForNodeArch("arm"), undefined);
 });
