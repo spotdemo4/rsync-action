@@ -1,11 +1,12 @@
-import { chmod, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 
 import * as core from "@actions/core";
 import * as exec from "@actions/exec";
 import * as io from "@actions/io";
 import * as tc from "@actions/tool-cache";
+
+import { createTlsHelper } from "./tls.ts";
 
 const READY_STATE = "rsync-action-ready";
 const POST_STATE = "rsync-action-post";
@@ -27,7 +28,10 @@ interface Auth {
   password: string;
 }
 
-type ToolPaths = Record<string, string>;
+interface ToolPaths {
+  rsync: string;
+  tlsHelper?: string;
+}
 type StaticRsyncAsset = "aarch64-unknown-linux-musl" | "x86_64-unknown-linux-musl";
 
 interface StaticRsyncRelease {
@@ -138,10 +142,6 @@ export function expandHomePath(localPath: string, home = process.env.HOME): stri
   return `${home}${localPath.slice(1)}`;
 }
 
-export function requiredTools(_tls: boolean): string[] {
-  return ["rsync"];
-}
-
 function getInputs(): ActionInputs {
   return {
     server: core.getInput("server", { required: true }),
@@ -154,11 +154,11 @@ function getInputs(): ActionInputs {
   };
 }
 
-async function ensureTool(tool: string): Promise<string> {
-  const fromPath = await io.which(tool, false);
+async function ensureRsync(): Promise<string> {
+  const fromPath = await io.which("rsync", false);
 
   if (fromPath) {
-    core.info(`Found ${tool} at ${fromPath}`);
+    core.info(`Found rsync at ${fromPath}`);
     return fromPath;
   }
 
@@ -171,9 +171,9 @@ async function ensureTool(tool: string): Promise<string> {
   if (cachedDir) {
     core.addPath(cachedDir);
 
-    const fromCache = await io.which(tool, false);
+    const fromCache = await io.which("rsync", false);
     if (fromCache) {
-      core.info(`Found ${tool} in the Actions tool cache`);
+      core.info("Found rsync in the Actions tool cache");
       return fromCache;
     }
   }
@@ -182,12 +182,12 @@ async function ensureTool(tool: string): Promise<string> {
 
   if (process.platform !== "linux" || !staticRsyncAsset) {
     throw new Error(
-      `Could not find ${tool} in PATH or the Actions tool cache. Built-in static rsync downloads support Linux x64 and Linux arm64 runners only.`,
+      "Could not find rsync in PATH or the Actions tool cache. Built-in static rsync downloads support Linux x64 and Linux arm64 runners only.",
     );
   }
 
   const staticRsyncDownloadUrl = staticRsyncUrl(staticRsyncAsset);
-  core.info(`Downloading ${tool} from ${staticRsyncDownloadUrl}`);
+  core.info(`Downloading rsync from ${staticRsyncDownloadUrl}`);
   const downloaded = await tc.downloadTool(staticRsyncDownloadUrl);
   await chmod(downloaded, 0o755);
 
@@ -198,90 +198,17 @@ async function ensureTool(tool: string): Promise<string> {
     STATIC_RSYNC_RELEASE.version,
     process.arch,
   );
-  const cachedTool = path.join(cacheDir, tool);
+  const cachedTool = path.join(cacheDir, "rsync");
   await chmod(cachedTool, 0o755);
   core.addPath(cacheDir);
 
   return cachedTool;
 }
 
-async function createTlsHelper(): Promise<string> {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "rsync-action-tls-"));
-  const helper = path.join(tempDir, "rsync-tls-helper");
-  const script =
-    `#!${process.execPath}
-const fs = require("node:fs");
-const tls = require("node:tls");
-
-let args = process.argv.slice(2);
-
-if (args[0] === "-l") {
-  args = args.slice(2);
-}
-
-const [hostname, command, serverFlag, daemonFlag] = args;
-
-if (!hostname || command !== "rsync" || serverFlag !== "--server" || daemonFlag !== "--daemon") {
-  console.error("Usage: rsync-tls-helper HOSTNAME rsync --server --daemon .");
-  process.exit(1);
-}
-
-const port = Number.parseInt(process.env.RSYNC_PORT || process.env.RSYNC_SSL_PORT || "874", 10);
-
-if (!Number.isFinite(port) || port <= 0) {
-  console.error("Invalid rsync TLS port.");
-  process.exit(1);
-}
-
-const options = {
-  host: hostname,
-  port,
-  servername: hostname,
-};
-
-if (process.env.RSYNC_SSL_CA_CERT === "") {
-  options.rejectUnauthorized = false;
-} else if (process.env.RSYNC_SSL_CA_CERT) {
-  options.ca = fs.readFileSync(process.env.RSYNC_SSL_CA_CERT);
-}
-
-if (process.env.RSYNC_SSL_CERT) {
-  options.cert = fs.readFileSync(process.env.RSYNC_SSL_CERT);
-}
-
-if (process.env.RSYNC_SSL_KEY) {
-  options.key = fs.readFileSync(process.env.RSYNC_SSL_KEY);
-}
-
-const socket = tls.connect(options, () => {
-  process.stdin.pipe(socket);
-  socket.pipe(process.stdout);
-});
-
-socket.on("error", (error) => {
-  console.error(` +
-    "`rsync TLS connection failed: ${error.message}`" +
-    `);
-  process.exitCode = 1;
-});
-
-socket.on("close", () => {
-  process.exit(process.exitCode ?? 0);
-});
-`;
-
-  await writeFile(helper, script);
-  await chmod(helper, 0o755);
-
-  return helper;
-}
-
 async function ensureTools(inputs: ActionInputs): Promise<ToolPaths> {
-  const tools: ToolPaths = {};
-
-  for (const tool of requiredTools(inputs.tls)) {
-    tools[tool] = await ensureTool(tool);
-  }
+  const tools: ToolPaths = {
+    rsync: await ensureRsync(),
+  };
 
   if (inputs.tls) {
     tools.tlsHelper = await createTlsHelper();

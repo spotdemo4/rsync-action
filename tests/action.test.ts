@@ -6,13 +6,13 @@ import {
   buildRsyncArgs,
   expandHomePath,
   parseSecret,
-  requiredTools,
   STATIC_RSYNC_RELEASE,
   staticRsyncAssetForNodeArch,
   staticRsyncReleaseTag,
   staticRsyncUrl,
   type ActionInputs,
 } from "../src/action.ts";
+import { resolveRsyncTlsPort } from "../src/tls.ts";
 
 function inputs(overrides: Partial<ActionInputs> = {}): ActionInputs {
   return {
@@ -83,9 +83,12 @@ await test("uses the TLS helper as rsync's remote shell", () => {
   assert.throws(() => buildRsyncArgs(inputs({ tls: true }), auth, "pull"), /TLS sync/);
 });
 
-await test("requires rsync for plain and TLS syncs", () => {
-  assert.deepEqual(requiredTools(false), ["rsync"]);
-  assert.deepEqual(requiredTools(true), ["rsync"]);
+await test("resolves rsync TLS ports like rsync-ssl", () => {
+  assert.equal(resolveRsyncTlsPort({}), 874);
+  assert.equal(resolveRsyncTlsPort({ RSYNC_PORT: "0" }), 874);
+  assert.equal(resolveRsyncTlsPort({ RSYNC_PORT: "0", RSYNC_SSL_PORT: "9443" }), 9443);
+  assert.equal(resolveRsyncTlsPort({ RSYNC_PORT: "1873", RSYNC_SSL_PORT: "9443" }), 1873);
+  assert.throws(() => resolveRsyncTlsPort({ RSYNC_PORT: "invalid" }), /Invalid rsync TLS port/);
 });
 
 await test("expands leading tilde local paths", () => {
