@@ -3,7 +3,7 @@
 Pull a file or directory from an rsync daemon before a job step runs, then push it back from the action's post step after later steps have changed it.
 
 ```yaml
-- uses: your-org/rsync-action@v1
+- uses: spotdemo4/rsync-action@main
   with:
     server: rsync.example.com:873
     module: backups
