@@ -27,3 +27,31 @@ jobs:
           RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
           RENOVATE_GITHUB_COM_TOKEN: ${{ secrets.GH_TOKEN }}
           LOG_LEVEL: ${{ runner.debug == '1' && 'debug' || 'info' }}
+
+  rsync:
+    # zizmor: ignore[excessive-permissions]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Initialize
+        uses: spotdemo4/nix-init@1ddbb72a8ae759aa958222420b71c6a4c2e3412f # v1.54.1
+        with:
+          token: ${{ secrets.DOCTOR_TOKEN }}
+          github_token: ${{ secrets.GH_TOKEN }}
+          niks3_url: https://niks3.trev.zip
+          fetch_depth: 0
+
+      - name: Tag rsync release
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          version="$(nix eval --raw .#rsync.version)"
+          last_tag="$(git describe --tags --match "rsync-v*" --abbrev=0 2>/dev/null || true)"
+
+          if [ "${last_tag}" = "rsync-v${version}" ]; then
+            exit 0
+          fi
+
+          git tag "rsync-v${version}"
+          git push origin "rsync-v${version}"

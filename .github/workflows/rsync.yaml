@@ -1,0 +1,54 @@
+name: rsync
+
+on:
+  push:
+    tags: ["rsync-v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      contents: write
+    steps:
+      - name: Initialize
+        uses: spotdemo4/nix-init@1ddbb72a8ae759aa958222420b71c6a4c2e3412f # v1.54.1
+
+      - name: Build rsync
+        run: |
+          set -euo pipefail
+
+          nix build .#rsync.aarch64-unknown-linux-musl --out-link result-aarch64-unknown-linux-musl
+          cp result-aarch64-unknown-linux-musl/bin/rsync aarch64-unknown-linux-musl
+
+          nix build .#rsync.x86_64-linux-unknown-linux-musl --out-link result-x86_64-linux-unknown-linux-musl
+          cp result-x86_64-linux-unknown-linux-musl/bin/rsync x86_64-linux-unknown-linux-musl
+
+          chmod +x aarch64-unknown-linux-musl x86_64-linux-unknown-linux-musl
+
+      - name: Release rsync
+        run: |
+          set -euo pipefail
+
+          if gh release view "${TAG}" --repo "${REPOSITORY}" >/dev/null 2>&1; then
+            gh release upload "${TAG}" \
+              aarch64-unknown-linux-musl \
+              x86_64-linux-unknown-linux-musl \
+              --repo "${REPOSITORY}" \
+              --clobber
+          else
+            gh release create "${TAG}" \
+              aarch64-unknown-linux-musl \
+              x86_64-linux-unknown-linux-musl \
+              --repo "${REPOSITORY}" \
+              --title "${TAG}" \
+              --verify-tag
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}

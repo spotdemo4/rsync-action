@@ -1,0 +1,55 @@
+name: rsync
+
+on:
+  push:
+    tags: ["rsync-v*"]
+  workflow_dispatch:
+
+# yaml-language-server-disable is not allowed
+enable-openid-connect: true
+
+jobs:
+  release:
+    # zizmor: ignore[excessive-permissions]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Initialize
+        uses: spotdemo4/nix-init@1ddbb72a8ae759aa958222420b71c6a4c2e3412f # v1.54.1
+        with:
+          token: ${{ secrets.DOCTOR_TOKEN }}
+          github_token: ${{ secrets.GH_TOKEN }}
+          niks3_url: https://niks3.trev.zip
+          shell: release
+
+      - name: Build rsync
+        run: |
+          set -euo pipefail
+
+          nix build .#rsync.aarch64-unknown-linux-musl --out-link result-aarch64-unknown-linux-musl
+          cp result-aarch64-unknown-linux-musl/bin/rsync aarch64-unknown-linux-musl
+
+          nix build .#rsync.x86_64-linux-unknown-linux-musl --out-link result-x86_64-linux-unknown-linux-musl
+          cp result-x86_64-linux-unknown-linux-musl/bin/rsync x86_64-linux-unknown-linux-musl
+
+          chmod +x aarch64-unknown-linux-musl x86_64-linux-unknown-linux-musl
+
+      - name: Release rsync
+        run: |
+          set -euo pipefail
+
+          server_host="${SERVER_URL#https://}"
+          server_host="${server_host#http://}"
+
+          fj --host "${server_host}" auth add-key "${FORGEJO_USER}" "${FORGEJO_TOKEN}"
+
+          fj --host "${server_host}" release create "${TAG}" \
+            --repo "${REPOSITORY}" \
+            --tag "${TAG}" \
+            --attach aarch64-unknown-linux-musl \
+            --attach x86_64-linux-unknown-linux-musl
+        env:
+          FORGEJO_TOKEN: ${{ secrets.DOCTOR_TOKEN }}
+          FORGEJO_USER: ${{ github.actor }}
+          REPOSITORY: ${{ github.repository }}
+          SERVER_URL: ${{ forgejo.SERVER_URL }}
+          TAG: ${{ github.ref_name }}
