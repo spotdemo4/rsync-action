@@ -22,7 +22,7 @@ inputs:
   tls:
     description: Use rsync-ssl for a TLS-protected rsync daemon
     required: false
-    default: "false"
+    default: "true"
   rsync-args:
     description: Newline-separated rsync arguments used for both pull and push
     required: false
