@@ -135,7 +135,7 @@
             }
           );
 
-          rsync = pkgs.pkgsStatic.rsync.overrideAttrs (old: {
+          rsync = pkgs.rsync.overrideAttrs (old: {
             postPatch = (old.postPatch or "") + ''
               substituteInPlace testsuite/itemize.test \
                 --replace-fail '. "$suitedir/rsync.fns"' '. "$suitedir/rsync.fns"
