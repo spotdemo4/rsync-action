@@ -58,6 +58,12 @@
             ];
           };
 
+          codex = pkgs.mkShell {
+            packages = with pkgs; [
+              codex
+            ];
+          };
+
           release = pkgs.mkShell {
             packages = with pkgs; [
               gh # github

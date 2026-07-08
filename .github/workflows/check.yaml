@@ -42,12 +42,12 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Initialize
+        uses: spotdemo4/nix-init@1443d93dfa3ca2f043b37f848631d6ac5563b0ec # v1.56.0
         with:
-          persist-credentials: false
+          shell: codex
 
-      - name: Run action
+      - name: Run rsync
         uses: ./. # zizmor: ignore[unpinned-uses]
         with:
           server: trev.zip
@@ -56,8 +56,5 @@ jobs:
           local-path: ~/.codex/auth.json
           secret: ${{ secrets.RSYNC_SECRET }}
 
-      - name: Run Codex
-        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56
-        with:
-          model: gpt-5.3-codex-spark
-          prompt: hello
+      - name: Run codex
+        run: codex exec -m gpt-5.3-codex-spark "hello"
