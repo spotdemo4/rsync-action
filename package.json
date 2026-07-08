@@ -1,6 +1,6 @@
 {
   "name": "rsync-action",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "rsync action",
   "license": "MIT",
   "repository": {
