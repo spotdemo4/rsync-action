@@ -293,4 +293,6 @@ export async function runAction(): Promise<void> {
   const tools = await ensureTools(inputs);
   core.info("Pushing to the rsync daemon");
   await sync("push", inputs, auth, tools);
+  core.info("Removing local path");
+  await io.rmRF(inputs.localPath);
 }

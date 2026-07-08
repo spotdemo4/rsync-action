@@ -20,4 +20,6 @@ Pulls a file or directory from an rsync daemon, then pushes it back when the wor
 
 TLS is enabled by default, set `tls: false` for a plain rsync daemon.
 
+The action removes `local-path` after a successful post-job push.
+
 `remote-path` and `local-path` preserve normal rsync trailing slash semantics. For directory contents, include trailing slashes on both paths. A `local-path` of `~` or leading `~/` is expanded to `HOME` before rsync runs.
