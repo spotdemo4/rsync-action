@@ -135,13 +135,7 @@
             }
           );
 
-          rsync = pkgs.rsync.overrideAttrs (old: {
-            postPatch = (old.postPatch or "") + ''
-              substituteInPlace testsuite/itemize.test \
-                --replace-fail '. "$suitedir/rsync.fns"' '. "$suitedir/rsync.fns"
-              test_skipped "itemize output is unstable for static musl builds"'
-            '';
-          });
+          rsync = pkgs.rsync;
         };
 
         # nix build #images.[...]
