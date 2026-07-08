@@ -44,3 +44,9 @@ jobs:
           remote-path: auth.json
           local-path: ~/.codex/auth.json
           secret: ${{ secrets.RSYNC_SECRET }}
+
+      - name: Run Codex
+        uses: openai/codex-action@52fe01ec70a42f454c9d2ebd47598f9fd6893d56
+        with:
+          model: gpt-5.3-codex-spark
+          prompt: hello
